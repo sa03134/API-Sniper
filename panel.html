@@ -125,6 +125,22 @@
         font-weight: 700;
       }
 
+      .badge-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .badge-label {
+        font-size: 10px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        font-weight: 600;
+      }
+      .badge-clean {
+        background: var(--green);
+      }
+
       .toolbar-spacer {
         flex: 1;
       }
@@ -249,6 +265,25 @@
       .request-card:hover {
         border-color: var(--accent);
       }
+      .request-card.noise {
+        opacity: 0.4;
+        border-left: 3px solid var(--text-muted);
+      }
+      .request-card.noise:hover {
+        opacity: 0.7;
+      }
+
+      .noise-tag {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: var(--text-muted);
+        color: var(--bg-primary);
+        flex-shrink: 0;
+      }
 
       .request-header {
         display: flex;
@@ -356,7 +391,14 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <span class="toolbar-title">API Sniper</span>
-      <span id="requestCount" class="badge">0</span>
+      <span class="badge-group">
+        <span id="requestCount" class="badge">0</span>
+        <span class="badge-label">total</span>
+      </span>
+      <span class="badge-group">
+        <span id="cleanCount" class="badge badge-clean">0</span>
+        <span class="badge-label">clean</span>
+      </span>
       <div class="toolbar-spacer"></div>
       <input
         id="filterInput"
@@ -364,7 +406,8 @@
         type="text"
         placeholder="Filter by URL..."
       />
-      <button id="btnCopy" class="btn btn-accent">Copy All Data (Expanded)</button>
+      <button id="btnCopyClean" class="btn btn-accent">Copy Clean Data</button>
+      <button id="btnCopy" class="btn">Copy All</button>
       <button id="btnClear" class="btn btn-danger">Clear</button>
     </div>
 

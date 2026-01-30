@@ -4,13 +4,38 @@
   // ── State ──
   const collectedRequests = [];
 
+  // ── Noise filter rules ──
+  const NOISE_URL_KEYWORDS = [
+    "segment.io",
+    "segment.com",
+    "amplitude.com",
+    "google-analytics",
+    "googleanalytics",
+    "analytics.google",
+    "bugsnag.com",
+    "badge-count",
+    "unread-exist",
+  ];
+  const NOISE_METHODS = ["OPTIONS"];
+
+  function isNoise(entry) {
+    const url = (entry.url || "").toLowerCase();
+    const method = (entry.method || "").toUpperCase();
+    if (NOISE_METHODS.includes(method)) return true;
+    return NOISE_URL_KEYWORDS.some(function (kw) {
+      return url.includes(kw);
+    });
+  }
+
   // ── DOM refs ──
   const requestListEl = document.getElementById("requestList");
   const emptyStateEl = document.getElementById("emptyState");
   const requestCountEl = document.getElementById("requestCount");
   const filterInput = document.getElementById("filterInput");
   const btnCopy = document.getElementById("btnCopy");
+  const btnCopyClean = document.getElementById("btnCopyClean");
   const btnClear = document.getElementById("btnClear");
+  const cleanCountEl = document.getElementById("cleanCount");
   const toastEl = document.getElementById("toast");
 
   // ── Helpers ──
@@ -52,15 +77,23 @@
     }
   }
 
+  function getCleanRequests() {
+    return collectedRequests.filter(function (r) { return !isNoise(r); });
+  }
+
   function updateCount() {
-    requestCountEl.textContent = collectedRequests.length;
+    const total = collectedRequests.length;
+    const clean = getCleanRequests().length;
+    requestCountEl.textContent = total;
+    cleanCountEl.textContent = clean;
   }
 
   // ── Rendering ──
 
   function renderRequest(entry, index) {
     const card = document.createElement("div");
-    card.className = "request-card";
+    const noise = isNoise(entry);
+    card.className = "request-card" + (noise ? " noise" : "");
     card.dataset.index = index;
 
     const method = (entry.method || "GET").toUpperCase();
@@ -72,6 +105,7 @@
         <span class="method-badge ${methodClass(method)}">${escapeHtml(method)}</span>
         <span class="request-url" title="${escapeHtml(url)}">${escapeHtml(url)}</span>
         <span class="request-status ${statusClass(status)}">${status || "..."}</span>
+        ${noise ? '<span class="noise-tag">NOISE</span>' : ''}
         <span class="expand-arrow">&#x25B6;</span>
       </div>
       <div class="request-detail">
@@ -201,27 +235,7 @@
 
   // ── Button handlers ──
 
-  btnCopy.addEventListener("click", function () {
-    if (collectedRequests.length === 0) {
-      showToast("No data to copy.");
-      return;
-    }
-
-    const exportData = collectedRequests.map(function (r) {
-      return {
-        url: r.url,
-        method: r.method,
-        statusCode: r.statusCode,
-        requestHeaders: r.requestHeaders,
-        responseHeaders: r.responseHeaders,
-        responseBody: r.responseBody,
-      };
-    });
-
-    const text = JSON.stringify(exportData, null, 2);
-
-    // Use a textarea fallback since DevTools panels may not support
-    // navigator.clipboard in all contexts.
+  function copyToClipboard(text, count, label) {
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.style.position = "fixed";
@@ -231,14 +245,13 @@
 
     try {
       document.execCommand("copy");
-      showToast("Copied " + collectedRequests.length + " request(s) to clipboard!");
+      showToast("Copied " + count + " " + label + " request(s)!");
     } catch (err) {
-      // Fallback to async clipboard API if available
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard
           .writeText(text)
           .then(function () {
-            showToast("Copied " + collectedRequests.length + " request(s) to clipboard!");
+            showToast("Copied " + count + " " + label + " request(s)!");
           })
           .catch(function () {
             showToast("Failed to copy. Check permissions.");
@@ -249,6 +262,38 @@
     } finally {
       document.body.removeChild(textarea);
     }
+  }
+
+  function buildExportData(requests) {
+    return requests.map(function (r) {
+      return {
+        url: r.url,
+        method: r.method,
+        statusCode: r.statusCode,
+        requestHeaders: r.requestHeaders,
+        responseHeaders: r.responseHeaders,
+        responseBody: r.responseBody,
+      };
+    });
+  }
+
+  btnCopy.addEventListener("click", function () {
+    if (collectedRequests.length === 0) {
+      showToast("No data to copy.");
+      return;
+    }
+    var text = JSON.stringify(buildExportData(collectedRequests), null, 2);
+    copyToClipboard(text, collectedRequests.length, "total");
+  });
+
+  btnCopyClean.addEventListener("click", function () {
+    var clean = getCleanRequests();
+    if (clean.length === 0) {
+      showToast("No clean data to copy (all filtered as noise).");
+      return;
+    }
+    var text = JSON.stringify(buildExportData(clean), null, 2);
+    copyToClipboard(text, clean.length, "clean");
   });
 
   btnClear.addEventListener("click", function () {
