@@ -382,6 +382,110 @@
         overflow-y: auto;
         line-height: 1.6;
       }
+
+      /* ── Settings drawer ── */
+      .settings-drawer {
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        padding: 0 16px;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.25s ease, padding 0.25s ease;
+      }
+      .settings-drawer.open {
+        max-height: 500px;
+        padding: 14px 16px;
+      }
+
+      .drawer-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+      }
+      .drawer-subtitle {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+      }
+      .drawer-hint {
+        font-size: 10px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+      .drawer-separator {
+        height: 1px;
+        background: var(--border);
+        margin: 12px 0;
+      }
+
+      .toggle-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--text-primary);
+      }
+      .toggle-row input[type="checkbox"] {
+        accent-color: var(--accent);
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+      }
+      .toggle-hint {
+        width: 100%;
+        font-size: 10px;
+        color: var(--text-muted);
+        padding-left: 23px;
+        margin-top: -4px;
+      }
+
+      .keyword-input-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .keyword-input {
+        flex: 1;
+        width: auto;
+      }
+      .keyword-add-btn {
+        padding: 5px 12px;
+      }
+      .keyword-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .keyword-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        font-size: 11px;
+        font-family: "SF Mono", "Cascadia Code", monospace;
+        color: var(--text-secondary);
+      }
+      .keyword-remove {
+        cursor: pointer;
+        color: var(--red);
+        font-size: 14px;
+        line-height: 1;
+        font-weight: 700;
+        margin-left: 2px;
+      }
+      .keyword-remove:hover {
+        color: var(--text-primary);
+      }
     </style>
   </head>
   <body>
@@ -409,6 +513,39 @@
       <button id="btnCopyClean" class="btn btn-accent">Copy Clean Data</button>
       <button id="btnCopy" class="btn">Copy All</button>
       <button id="btnClear" class="btn btn-danger">Clear</button>
+      <button id="btnSettings" class="btn" title="Filter settings">&#x2699;</button>
+    </div>
+
+    <!-- Settings drawer -->
+    <div id="settingsDrawer" class="settings-drawer">
+      <div class="drawer-title">Noise Filter Settings</div>
+
+      <label class="toggle-row">
+        <input type="checkbox" id="chkSameOrigin" checked />
+        <span>Same-origin only</span>
+        <span class="toggle-hint">Hide 3rd-party domains (analytics, SDKs)</span>
+      </label>
+
+      <label class="toggle-row">
+        <input type="checkbox" id="chkHideEmpty" checked />
+        <span>Hide empty responses</span>
+        <span class="toggle-hint">Skip {}, [], null, true, "" bodies</span>
+      </label>
+
+      <label class="toggle-row">
+        <input type="checkbox" id="chkJsonOnly" />
+        <span>JSON responses only</span>
+        <span class="toggle-hint">Keep only Content-Type: application/json</span>
+      </label>
+
+      <div class="drawer-separator"></div>
+      <div class="drawer-subtitle">Custom block keywords</div>
+      <div class="drawer-hint">URLs containing these keywords will be marked as noise.</div>
+      <div class="keyword-input-row">
+        <input id="customKeywordsInput" class="filter-input keyword-input" type="text" placeholder="e.g. /api/logs" />
+        <button id="btnAddKeyword" class="btn btn-accent keyword-add-btn">Add</button>
+      </div>
+      <div id="customKeywordsList" class="keyword-list"></div>
     </div>
 
     <!-- Request list -->

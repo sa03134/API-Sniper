@@ -3,9 +3,17 @@
 
   // ── State ──
   const collectedRequests = [];
+  var pageOrigin = "";
 
-  // ── Noise filter rules ──
-  const NOISE_URL_KEYWORDS = [
+  // Grab the inspected page's origin once
+  try {
+    chrome.devtools.inspectedWindow.eval("location.origin", function (result) {
+      if (result) pageOrigin = result;
+    });
+  } catch (_) {}
+
+  // ── Noise filter — built-in keyword list ──
+  const DEFAULT_NOISE_KEYWORDS = [
     "segment.io",
     "segment.com",
     "amplitude.com",
@@ -13,30 +21,122 @@
     "googleanalytics",
     "analytics.google",
     "bugsnag.com",
+    "sentry.io",
+    "hotjar.com",
+    "clarity.ms",
+    "doubleclick.net",
+    "facebook.net",
+    "fbevents",
+    "mixpanel.com",
+    "datadog",
+    "newrelic",
     "badge-count",
     "unread-exist",
+    "/health",
+    "/ping",
+    "/heartbeat",
+    "/alive",
+    "/polling",
   ];
   const NOISE_METHODS = ["OPTIONS"];
 
+  // ── Persistent settings (localStorage) ──
+  var STORAGE_KEY = "apisniper_settings";
+
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return null;
+  }
+
+  function saveSettings(s) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (_) {}
+  }
+
+  function getDefaultSettings() {
+    return {
+      sameOriginOnly: true,
+      hideEmptyBody: true,
+      jsonOnly: false,
+      customKeywords: [],
+    };
+  }
+
+  var settings = Object.assign(getDefaultSettings(), loadSettings() || {});
+
+  // ── Noise detection ──
+  function getAllNoiseKeywords() {
+    return DEFAULT_NOISE_KEYWORDS.concat(settings.customKeywords || []);
+  }
+
+  function isEmptyBody(body) {
+    if (body === null || body === undefined) return true;
+    if (typeof body === "string") {
+      var t = body.trim();
+      return t === "" || t === "{}" || t === "[]" || t === "null" || t === "true" || t === "false";
+    }
+    if (typeof body === "object") {
+      if (Array.isArray(body)) return body.length === 0;
+      return Object.keys(body).length === 0;
+    }
+    return false;
+  }
+
   function isNoise(entry) {
-    const url = (entry.url || "").toLowerCase();
-    const method = (entry.method || "").toUpperCase();
+    var url = (entry.url || "").toLowerCase();
+    var method = (entry.method || "").toUpperCase();
+
+    // OPTIONS always noise
     if (NOISE_METHODS.includes(method)) return true;
-    return NOISE_URL_KEYWORDS.some(function (kw) {
-      return url.includes(kw);
-    });
+
+    // Same-origin filter
+    if (settings.sameOriginOnly && pageOrigin) {
+      try {
+        var reqOrigin = new URL(entry.url).origin;
+        if (reqOrigin !== pageOrigin) return true;
+      } catch (_) {}
+    }
+
+    // Keyword match (built-in + custom)
+    var keywords = getAllNoiseKeywords();
+    if (keywords.some(function (kw) { return url.includes(kw.toLowerCase()); })) return true;
+
+    // Empty body filter
+    if (settings.hideEmptyBody && isEmptyBody(entry.responseBody)) return true;
+
+    // JSON-only filter
+    if (settings.jsonOnly) {
+      var ct = (entry.responseHeaders && (entry.responseHeaders["content-type"] || entry.responseHeaders["Content-Type"])) || "";
+      if (!ct.includes("json")) return true;
+    }
+
+    // Static resource extensions
+    if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|ico|map)(\?|$)/i.test(entry.url)) return true;
+
+    return false;
   }
 
   // ── DOM refs ──
-  const requestListEl = document.getElementById("requestList");
-  const emptyStateEl = document.getElementById("emptyState");
-  const requestCountEl = document.getElementById("requestCount");
-  const filterInput = document.getElementById("filterInput");
-  const btnCopy = document.getElementById("btnCopy");
-  const btnCopyClean = document.getElementById("btnCopyClean");
-  const btnClear = document.getElementById("btnClear");
-  const cleanCountEl = document.getElementById("cleanCount");
-  const toastEl = document.getElementById("toast");
+  var requestListEl = document.getElementById("requestList");
+  var requestCountEl = document.getElementById("requestCount");
+  var filterInput = document.getElementById("filterInput");
+  var btnCopy = document.getElementById("btnCopy");
+  var btnCopyClean = document.getElementById("btnCopyClean");
+  var btnClear = document.getElementById("btnClear");
+  var cleanCountEl = document.getElementById("cleanCount");
+  var toastEl = document.getElementById("toast");
+
+  // Settings UI refs
+  var btnSettings = document.getElementById("btnSettings");
+  var settingsDrawer = document.getElementById("settingsDrawer");
+  var chkSameOrigin = document.getElementById("chkSameOrigin");
+  var chkHideEmpty = document.getElementById("chkHideEmpty");
+  var chkJsonOnly = document.getElementById("chkJsonOnly");
+  var customKeywordsInput = document.getElementById("customKeywordsInput");
+  var btnAddKeyword = document.getElementById("btnAddKeyword");
+  var customKeywordsList = document.getElementById("customKeywordsList");
 
   // ── Helpers ──
 
@@ -305,6 +405,84 @@
   filterInput.addEventListener("input", function () {
     renderAll();
   });
+
+  // ── Settings drawer logic ──
+  btnSettings.addEventListener("click", function () {
+    settingsDrawer.classList.toggle("open");
+  });
+
+  // Close drawer when clicking outside
+  document.addEventListener("click", function (e) {
+    if (settingsDrawer.classList.contains("open") &&
+        !settingsDrawer.contains(e.target) &&
+        e.target !== btnSettings) {
+      settingsDrawer.classList.remove("open");
+    }
+  });
+
+  function applySettingsToUI() {
+    chkSameOrigin.checked = settings.sameOriginOnly;
+    chkHideEmpty.checked = settings.hideEmptyBody;
+    chkJsonOnly.checked = settings.jsonOnly;
+    renderCustomKeywords();
+  }
+
+  function onSettingChange() {
+    settings.sameOriginOnly = chkSameOrigin.checked;
+    settings.hideEmptyBody = chkHideEmpty.checked;
+    settings.jsonOnly = chkJsonOnly.checked;
+    saveSettings(settings);
+    updateCount();
+    renderAll();
+  }
+
+  chkSameOrigin.addEventListener("change", onSettingChange);
+  chkHideEmpty.addEventListener("change", onSettingChange);
+  chkJsonOnly.addEventListener("change", onSettingChange);
+
+  // ── Custom keywords ──
+  function renderCustomKeywords() {
+    customKeywordsList.innerHTML = "";
+    (settings.customKeywords || []).forEach(function (kw, i) {
+      var tag = document.createElement("span");
+      tag.className = "keyword-tag";
+      tag.innerHTML = escapeHtml(kw) + '<span class="keyword-remove" data-idx="' + i + '">&times;</span>';
+      customKeywordsList.appendChild(tag);
+    });
+    // Attach remove handlers
+    customKeywordsList.querySelectorAll(".keyword-remove").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var idx = parseInt(this.dataset.idx, 10);
+        settings.customKeywords.splice(idx, 1);
+        saveSettings(settings);
+        renderCustomKeywords();
+        updateCount();
+        renderAll();
+      });
+    });
+  }
+
+  btnAddKeyword.addEventListener("click", function () {
+    var val = customKeywordsInput.value.trim();
+    if (!val) return;
+    if (!settings.customKeywords) settings.customKeywords = [];
+    settings.customKeywords.push(val);
+    customKeywordsInput.value = "";
+    saveSettings(settings);
+    renderCustomKeywords();
+    updateCount();
+    renderAll();
+  });
+
+  customKeywordsInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      btnAddKeyword.click();
+    }
+  });
+
+  applySettingsToUI();
 
   // ── Initial render ──
   renderAll();
