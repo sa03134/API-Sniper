@@ -16,15 +16,32 @@
   // ═══════════════════════════════════════════════════════
   // Constants — noise & scoring
   // ═══════════════════════════════════════════════════════
-  var NOISE_URL_KEYWORDS = [
-    "analytics", "ads", "collect", "pixel", "telemetry",
-    "log", "bugsnag", "sentry", "amplitude", "segment",
-    "cloudfront", "static",
-    "google-analytics", "googleanalytics", "analytics.google",
-    "hotjar", "clarity.ms", "doubleclick", "facebook.net",
-    "fbevents", "mixpanel", "datadog", "newrelic",
-    "badge-count", "unread-exist",
-    "/health", "/ping", "/heartbeat", "/alive", "/polling",
+
+  // Noise DOMAINS — matched against the request hostname only.
+  // This prevents false positives like "log" matching "/login".
+  var NOISE_DOMAINS = [
+    "google-analytics.com", "googleanalytics.com", "analytics.google.com",
+    "segment.io", "segment.com", "cdn.segment.com",
+    "amplitude.com", "api.amplitude.com",
+    "bugsnag.com", "notify.bugsnag.com",
+    "sentry.io", "o0.ingest.sentry.io",
+    "hotjar.com", "mixpanel.com", "api.mixpanel.com",
+    "clarity.ms", "doubleclick.net", "facebook.net",
+    "connect.facebook.net", "graph.facebook.com",
+    "datadog-agent", "browser-intake-datadoghq.com",
+    "bam.nr-data.net", "js-agent.newrelic.com",
+    "cloudflareinsights.com",
+    "googletagmanager.com", "googlesyndication.com",
+    "adservice.google.com", "pagead2.googlesyndication.com",
+    "bat.bing.com", "tr.snapchat.com",
+    "tiktokapi-us.tplinkhome.net",
+  ];
+
+  // Noise PATH patterns — matched against pathname only (exact segment match).
+  var NOISE_PATHS = [
+    "/health", "/healthz", "/ping", "/heartbeat",
+    "/alive", "/ready", "/readyz",
+    "/badge-count", "/unread-exist",
   ];
 
   var NOISE_METHODS = ["OPTIONS"];
@@ -39,7 +56,7 @@
   ];
 
   var VVIP_THRESHOLD = 70;
-  var MIN_BODY_LENGTH = 150;
+  var MIN_BODY_LENGTH = 50;
 
   // ═══════════════════════════════════════════════════════
   // Persistent settings
@@ -148,16 +165,46 @@
     return null;
   }
 
+  // -- Extract base domain (e.g. "api.soomgo.com" → "soomgo.com") --
+  function getBaseDomain(hostname) {
+    var parts = hostname.replace(/\.+$/, "").split(".");
+    if (parts.length <= 2) return hostname.toLowerCase();
+    return parts.slice(-2).join(".").toLowerCase();
+  }
+
+  // -- Check if hostname matches a noise domain --
+  function isNoiseDomain(hostname) {
+    var h = hostname.toLowerCase();
+    for (var i = 0; i < NOISE_DOMAINS.length; i++) {
+      var nd = NOISE_DOMAINS[i];
+      if (h === nd || h.endsWith("." + nd)) return nd;
+    }
+    return null;
+  }
+
+  // -- Check if pathname starts with a noise path --
+  function isNoisePath(pathname) {
+    var p = pathname.toLowerCase();
+    for (var i = 0; i < NOISE_PATHS.length; i++) {
+      if (p === NOISE_PATHS[i] || p.startsWith(NOISE_PATHS[i] + "/") || p.startsWith(NOISE_PATHS[i] + "?")) {
+        return NOISE_PATHS[i];
+      }
+    }
+    return null;
+  }
+
   /**
    * computeScore(entry) → { score: number, reasons: string[], isNoise: boolean }
    *
    * Phase 1 — Disqualify (score = 0):
    *   - OPTIONS method
-   *   - URL matches noise keywords or custom keywords
-   *   - Same-origin filter (when enabled)
+   *   - Hostname matches noise domain list (analytics/tracking services)
+   *   - Pathname matches noise path list (/health, /ping, etc.)
+   *   - Custom keywords (user-defined, substring match on full URL)
+   *   - Same-base-domain filter (when enabled)
    *   - Static resource extension
    *   - Response is not JSON
-   *   - JSON body shorter than 150 chars
+   *   - JSON body shorter than MIN_BODY_LENGTH chars
    *
    * Phase 2 — Base + Bonuses:
    *   Base = 10
@@ -167,8 +214,9 @@
    */
   function computeScore(entry) {
     var reasons = [];
-    var url = (entry.url || "").toLowerCase();
     var method = (entry.method || "").toUpperCase();
+    var parsed_url;
+    try { parsed_url = new URL(entry.url); } catch (_) { parsed_url = null; }
 
     // ── Phase 1: disqualify → noise ──
 
@@ -176,20 +224,39 @@
       return { score: 0, reasons: ["OPTIONS method"], isNoise: true };
     }
 
-    // Same-origin
-    if (settings.sameOriginOnly && pageOrigin) {
+    // Same-base-domain (allows subdomains: api.soomgo.com ≈ soomgo.com)
+    if (settings.sameOriginOnly && pageOrigin && parsed_url) {
       try {
-        if (new URL(entry.url).origin !== pageOrigin) {
-          return { score: 0, reasons: ["3rd-party origin"], isNoise: true };
+        var pageDomain = getBaseDomain(new URL(pageOrigin).hostname);
+        var reqDomain = getBaseDomain(parsed_url.hostname);
+        if (pageDomain !== reqDomain) {
+          return { score: 0, reasons: ["3rd-party domain: " + reqDomain], isNoise: true };
         }
       } catch (_) {}
     }
 
-    // Noise keywords (built-in + custom)
-    var allKeywords = NOISE_URL_KEYWORDS.concat(settings.customKeywords || []);
-    for (var ki = 0; ki < allKeywords.length; ki++) {
-      if (url.indexOf(allKeywords[ki].toLowerCase()) !== -1) {
-        return { score: 0, reasons: ["URL keyword: " + allKeywords[ki]], isNoise: true };
+    // Noise domains (hostname-level check, not substring on full URL)
+    if (parsed_url) {
+      var noiseDom = isNoiseDomain(parsed_url.hostname);
+      if (noiseDom) {
+        return { score: 0, reasons: ["Noise domain: " + noiseDom], isNoise: true };
+      }
+    }
+
+    // Noise paths (pathname-level check)
+    if (parsed_url) {
+      var noisePth = isNoisePath(parsed_url.pathname);
+      if (noisePth) {
+        return { score: 0, reasons: ["Noise path: " + noisePth], isNoise: true };
+      }
+    }
+
+    // Custom keywords (user-defined — these intentionally do substring match)
+    var customKws = settings.customKeywords || [];
+    var fullUrl = (entry.url || "").toLowerCase();
+    for (var ki = 0; ki < customKws.length; ki++) {
+      if (fullUrl.indexOf(customKws[ki].toLowerCase()) !== -1) {
+        return { score: 0, reasons: ["Custom keyword: " + customKws[ki]], isNoise: true };
       }
     }
 
