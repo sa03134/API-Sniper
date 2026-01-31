@@ -28,7 +28,10 @@
         --method-delete: #f38ba8;
         --method-patch: #fab387;
         --radius: 8px;
+        --gold: #f5c211;
+        --gold-dim: #a68b0a;
         --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        --vvip-glow: 0 0 8px rgba(245, 194, 17, 0.35);
       }
 
       @media (prefers-color-scheme: light) {
@@ -54,7 +57,10 @@
           --method-put: #df8e1d;
           --method-delete: #d20f39;
           --method-patch: #fe640b;
+          --gold: #d4a017;
+          --gold-dim: #8a6d0f;
           --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          --vvip-glow: 0 0 8px rgba(212, 160, 23, 0.3);
         }
       }
 
@@ -140,6 +146,10 @@
       .badge-clean {
         background: var(--green);
       }
+      .badge-vvip {
+        background: var(--gold);
+        color: #1a1a1a;
+      }
 
       .toolbar-spacer {
         flex: 1;
@@ -206,6 +216,18 @@
         color: var(--bg-primary);
       }
 
+      .btn-gold {
+        background: var(--gold);
+        color: #1a1a1a;
+        border-color: var(--gold);
+        font-weight: 700;
+      }
+      .btn-gold:hover {
+        background: var(--gold-dim);
+        border-color: var(--gold-dim);
+        color: #fff;
+      }
+
       /* ── Toast notification ── */
       .toast {
         position: fixed;
@@ -265,14 +287,58 @@
       .request-card:hover {
         border-color: var(--accent);
       }
+      .request-card.vvip {
+        border-left: 3px solid var(--gold);
+        box-shadow: var(--vvip-glow);
+      }
       .request-card.noise {
-        opacity: 0.4;
+        opacity: 0.35;
         border-left: 3px solid var(--text-muted);
       }
       .request-card.noise:hover {
-        opacity: 0.7;
+        opacity: 0.6;
       }
 
+      /* Score badge (left of method) */
+      .score-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+        height: 20px;
+        padding: 0 5px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 800;
+        font-family: "SF Mono", "Cascadia Code", monospace;
+        flex-shrink: 0;
+      }
+      .score-vvip {
+        background: var(--gold);
+        color: #1a1a1a;
+      }
+      .score-ok {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+      }
+      .score-noise {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+      }
+
+      /* VVIP / NOISE tags */
+      .vvip-tag {
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        padding: 1px 7px;
+        border-radius: 4px;
+        background: var(--gold);
+        color: #1a1a1a;
+        flex-shrink: 0;
+      }
       .noise-tag {
         font-size: 9px;
         font-weight: 700;
@@ -283,6 +349,12 @@
         background: var(--text-muted);
         color: var(--bg-primary);
         flex-shrink: 0;
+      }
+
+      .detail-pre-sm {
+        max-height: 60px;
+        font-size: 10px;
+        color: var(--text-muted);
       }
 
       .request-header {
@@ -503,6 +575,10 @@
         <span id="cleanCount" class="badge badge-clean">0</span>
         <span class="badge-label">clean</span>
       </span>
+      <span class="badge-group">
+        <span id="vvipCount" class="badge badge-vvip">0</span>
+        <span class="badge-label">vvip</span>
+      </span>
       <div class="toolbar-spacer"></div>
       <input
         id="filterInput"
@@ -510,7 +586,7 @@
         type="text"
         placeholder="Filter by URL..."
       />
-      <button id="btnCopyClean" class="btn btn-accent">Copy Clean Data</button>
+      <button id="btnCopyVvip" class="btn btn-gold">Copy VVIP</button>
       <button id="btnCopy" class="btn">Copy All</button>
       <button id="btnClear" class="btn btn-danger">Clear</button>
       <button id="btnSettings" class="btn" title="Filter settings">&#x2699;</button>
